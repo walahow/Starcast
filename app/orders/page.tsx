@@ -5,7 +5,8 @@ import { useAuth } from "@/lib/context/AuthContext";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { orderApi, ApiOrder } from "@/lib/api";
-import { Loader2, Package, Calendar, Clock, Receipt, RefreshCw, MessageSquare } from "lucide-react";
+import { Loader2, Package, Calendar, Clock, Receipt, RefreshCw, CreditCard } from "lucide-react";
+import Script from "next/script";
 
 export default function Orders() {
   const { isAuthenticated, loading: authLoading } = useAuth();
@@ -13,6 +14,7 @@ export default function Orders() {
   const [orders, setOrders] = useState<ApiOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [payLoadingId, setPayLoadingId] = useState<number | null>(null);
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -57,6 +59,41 @@ export default function Orders() {
     return colorMap[status.toLowerCase()] || "bg-secondary border-border text-muted-foreground";
   };
 
+  const handlePayNow = async (orderId: number, orderCode: string) => {
+    if (!(window as any).snap) {
+      alert("Payment gateway is not ready yet. Please refresh the page and try again.");
+      return;
+    }
+    
+    setPayLoadingId(orderId);
+    try {
+      const result = await orderApi.pay(orderId);
+      
+      if (result.snap_token) {
+        (window as any).snap.pay(result.snap_token, {
+          onSuccess: () => {
+            fetchOrders();
+          },
+          onPending: () => {
+            fetchOrders();
+          },
+          onError: (err: any) => {
+            alert(`Payment failed: ${err.message || "There was an error processing payment."}`);
+          },
+          onClose: () => {
+            setPayLoadingId(null);
+          }
+        });
+      } else {
+        alert("Failed to retrieve payment token.");
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.error || "Failed to initialize payment. Please try again.");
+    } finally {
+      setPayLoadingId(null);
+    }
+  };
+
   if (authLoading || loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -67,6 +104,13 @@ export default function Orders() {
 
   return (
     <div className="min-h-screen bg-background text-foreground pb-20">
+      {/* Midtrans Snap script */}
+      <Script
+        src="https://app.sandbox.midtrans.com/snap/snap.js"
+        data-client-key={process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY || "Mid-client-NubSk2M8JK6ZeBUo"}
+        strategy="lazyOnload"
+      />
+
       {/* Header */}
       <header className="border-b border-border bg-secondary/20 backdrop-blur-md sticky top-0 z-40">
         <div className="max-w-5xl mx-auto px-4 h-20 flex items-center justify-between">
@@ -154,12 +198,28 @@ export default function Orders() {
                     <p className="text-[10px] text-muted-foreground uppercase tracking-widest mb-0.5">Grand Total</p>
                     <p className="text-xl font-bold text-primary font-serif">{formatPrice(order.total)}</p>
                   </div>
-                  <Link
-                    href={`/orders/${order.id}/invoice`}
-                    className="flex items-center gap-2 border border-border bg-background px-5 py-3 rounded-xl text-xs uppercase font-bold tracking-widest hover:border-primary hover:shadow-[0_0_12px_rgba(212,175,55,0.1)] transition duration-300"
-                  >
-                    <Receipt className="w-3.5 h-3.5 text-primary" /> Invoice
-                  </Link>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    {order.order_status === "pending" && (
+                      <button
+                        onClick={() => handlePayNow(order.id, order.order_code)}
+                        disabled={payLoadingId === order.id}
+                        className="flex items-center gap-2 bg-primary text-background border border-primary px-5 py-3 rounded-xl text-xs uppercase font-bold tracking-widest hover:bg-primary/90 hover:shadow-[0_0_12px_rgba(212,175,55,0.2)] transition duration-300 cursor-pointer disabled:opacity-50 disabled:pointer-events-none"
+                      >
+                        {payLoadingId === order.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <CreditCard className="w-3.5 h-3.5" />
+                        )}
+                        Pay Now
+                      </button>
+                    )}
+                    <Link
+                      href={`/orders/${order.id}/invoice`}
+                      className="flex items-center gap-2 border border-border bg-background px-5 py-3 rounded-xl text-xs uppercase font-bold tracking-widest hover:border-primary hover:shadow-[0_0_12px_rgba(212,175,55,0.1)] transition duration-300"
+                    >
+                      <Receipt className="w-3.5 h-3.5 text-primary" /> Invoice
+                    </Link>
+                  </div>
                 </div>
               </div>
             ))}

@@ -417,6 +417,85 @@ router.get("/:id", authMiddleware, async (req, res) => {
   }
 });
 
+router.post("/:id/pay", authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // 1. Fetch order
+    const [orders] = await pool.query(
+      `SELECT id, order_code, order_status, total, shipping_address, shipping_cost, courier FROM orders WHERE id = ? AND user_id = ?`,
+      [id, req.user.id]
+    );
+
+    if (orders.length === 0) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    const order = orders[0];
+
+    if (order.order_status !== "pending") {
+      return res.status(400).json({ error: "Only pending orders can be paid." });
+    }
+
+    // 2. Fetch order items
+    const [items] = await pool.query(
+      `SELECT product_id, qty, price_snapshot, product_title_snapshot FROM order_items WHERE order_id = ?`,
+      [order.id]
+    );
+
+    // 3. Construct Midtrans transaction parameters
+    const midtransItems = items.map((it) => ({
+      id: `PROD-${it.product_id}`,
+      price: Math.round(parseFloat(it.price_snapshot)),
+      quantity: it.qty,
+      name: it.product_title_snapshot.substring(0, 50),
+    }));
+
+    if (parseFloat(order.shipping_cost) > 0) {
+      midtransItems.push({
+        id: "SHIPPING",
+        price: Math.round(parseFloat(order.shipping_cost)),
+        quantity: 1,
+        name: `Ongkir ${order.courier || "JNE"}`,
+      });
+    }
+
+    // 4. Fetch user details
+    const [users] = await pool.query("SELECT name, email, phone FROM users WHERE id = ?", [req.user.id]);
+    const user = users[0];
+
+    const midtransParam = {
+      transaction_details: {
+        order_id: order.order_code,
+        gross_amount: Math.round(parseFloat(order.total)),
+      },
+      item_details: midtransItems,
+      customer_details: {
+        first_name: user.name,
+        email: user.email,
+        phone: user.phone || "",
+        shipping_address: {
+          address: order.shipping_address,
+        },
+      },
+    };
+
+    // 5. Create Midtrans snap transaction
+    const snapResponse = await snap.createTransaction(midtransParam);
+
+    res.json({
+      snap_token: snapResponse.token,
+      snap_redirect_url: snapResponse.redirect_url,
+    });
+  } catch (err) {
+    console.error("[orders] Pay order error:", err);
+    const clientMsg = err.ApiResponse?.error_messages?.[0]
+      || err.message
+      || "Gagal memproses pembayaran. Silakan coba lagi.";
+    res.status(500).json({ error: clientMsg });
+  }
+});
+
 router.put("/:id/confirm", authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;

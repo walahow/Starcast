@@ -202,6 +202,46 @@ async function seedDefaultProducts() {
   }
 }
 
+async function ensureDatabaseSchema() {
+  try {
+    // 1. Ensure tracking_url column in shipping table
+    const [cols] = await pool.query(
+      "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'shipping' AND COLUMN_NAME = 'tracking_url'"
+    );
+    if (cols[0].cnt === 0) {
+      console.log("Adding 'tracking_url' column to 'shipping' table...");
+      await pool.query("ALTER TABLE shipping ADD COLUMN tracking_url VARCHAR(500) DEFAULT NULL");
+      console.log("✅ Added 'tracking_url' column");
+    }
+
+    // 2. Ensure notifications table exists
+    const [tables] = await pool.query(
+      "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notifications'"
+    );
+    if (tables[0].cnt === 0) {
+      console.log("Creating 'notifications' table...");
+      await pool.query(`
+        CREATE TABLE notifications (
+          id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+          user_id INT UNSIGNED NOT NULL,
+          order_id INT UNSIGNED DEFAULT NULL,
+          type VARCHAR(50) NOT NULL,
+          title VARCHAR(200) NOT NULL,
+          body TEXT NOT NULL,
+          data JSON DEFAULT NULL,
+          sent TINYINT(1) DEFAULT 0,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          KEY idx_notifications_user (user_id),
+          KEY idx_notifications_order (order_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      `);
+      console.log("✅ Created 'notifications' table");
+    }
+  } catch (err) {
+    console.error("Failed to run database schema migrations:", err);
+  }
+}
+
 async function ensureAdminAccount() {
   try {
     const adminEmail = process.env.ADMIN_EMAIL || "admin@starcast.id";
@@ -225,6 +265,7 @@ async function ensureAdminAccount() {
 }
 
 app.listen(PORT, async () => {
+  await ensureDatabaseSchema();
   await ensureAdminAccount();
   await seedDefaultProducts();
   console.log(`\n🚀 Starcast API running on http://localhost:${PORT}`);

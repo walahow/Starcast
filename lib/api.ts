@@ -103,6 +103,7 @@ export const orderApi = {
   getReviews: (id: number) => api.get<{ reviews: Array<{ id: number; product_id: number; rating: number; comment: string | null; created_at: string }> }>(`/orders/${id}/reviews`).then((r) => r.data.reviews),
   createReview: (id: number, data: { product_id: number; rating: number; comment?: string }) =>
     api.post<{ id: number; product_id: number; rating: number; comment: string | null }>(`/orders/${id}/reviews`, data).then((r) => r.data),
+  pay: (id: number) => api.post<{ snap_token: string; snap_redirect_url: string }>(`/orders/${id}/pay`).then((r) => r.data),
 };
 
 export const paymentApi = {
