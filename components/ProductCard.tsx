@@ -58,7 +58,7 @@ export default function ProductCard({ product, onCheckout }: ProductCardProps) {
     : '📦 Pre-Order';
 
   return (
-    <div className="group flex flex-col h-full bg-white border border-border rounded-2xl overflow-hidden hover:shadow-2xl hover:border-primary hover:-translate-y-1 transition-all duration-500 ease-out transform">
+    <div className="group flex flex-col h-full bg-secondary/40 backdrop-blur border border-border/80 rounded-2xl overflow-hidden hover:shadow-2xl hover:border-primary hover:-translate-y-1 transition-all duration-500 ease-out transform">
       {/* Image */}
       <div className="relative aspect-square overflow-hidden bg-secondary group/image">
         <img

@@ -1,166 +1,186 @@
 'use client';
 
-import { PRODUCTS } from '@/lib/products';
-
-interface PreOrder {
-  id: number;
-  productId: number;
-  customerName: string;
-  customerPhone: string;
-  quantity: number;
-  totalPrice: string;
-  status: 'Pending' | 'Confirmed' | 'Paid' | 'Shipped';
-  date: string;
-}
-
-// Mock data for demonstration
-const mockPreOrders: PreOrder[] = [
-  {
-    id: 1,
-    productId: 1,
-    customerName: 'John Doe',
-    customerPhone: '+62812345678',
-    quantity: 1,
-    totalPrice: 'Rp 375.000',
-    status: 'Confirmed',
-    date: '2026-05-15',
-  },
-  {
-    id: 2,
-    productId: 2,
-    customerName: 'Jane Smith',
-    customerPhone: '+62823456789',
-    quantity: 2,
-    totalPrice: 'Rp 780.000',
-    status: 'Paid',
-    date: '2026-05-16',
-  },
-  {
-    id: 3,
-    productId: 3,
-    customerName: 'Collector X',
-    customerPhone: '+62834567890',
-    quantity: 1,
-    totalPrice: 'Rp 250.000',
-    status: 'Pending',
-    date: '2026-05-17',
-  },
-];
+import { useEffect, useState } from 'react';
+import { adminApi, AdminOrder } from '@/lib/api';
+import { Loader2, RefreshCw, Smartphone } from 'lucide-react';
 
 export default function AdminPreOrders() {
-  const [preOrders, setPreOrders] = useState<PreOrder[]>(mockPreOrders);
+  const [orders, setOrders] = useState<AdminOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  const handleStatusUpdate = (id: number, newStatus: PreOrder['status']) => {
-    setPreOrders(
-      preOrders.map(po =>
-        po.id === id ? { ...po, status: newStatus } : po
-      )
+  const fetchOrders = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const data = await adminApi.getAdminOrders();
+      setOrders(data);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to load pre-orders from database logs.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchOrders();
+  }, []);
+
+  const handleStatusUpdate = async (id: number, newStatus: string) => {
+    try {
+      setLoading(true);
+      await adminApi.updateOrderStatus(id, newStatus);
+      fetchOrders();
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to update order status.');
+      setLoading(false);
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    const colorMap: Record<string, string> = {
+      pending: "bg-yellow-500/10 border-yellow-500/20 text-yellow-500",
+      paid: "bg-green-500/10 border-green-500/20 text-green-500",
+      processing: "bg-blue-500/10 border-blue-500/20 text-blue-400",
+      shipped: "bg-purple-500/10 border-purple-500/20 text-purple-400",
+      done: "bg-emerald-500/10 border-emerald-500/20 text-emerald-400",
+      cancelled: "bg-red-500/10 border-red-500/20 text-red-400",
+    };
+    return colorMap[status.toLowerCase()] || "bg-secondary border-border text-muted-foreground";
+  };
+
+  const formatPrice = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
+  const formatDate = (isoString: string) => {
+    const d = new Date(isoString);
+    return d.toLocaleDateString("id-ID", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  };
+
+  if (loading && orders.length === 0) {
+    return (
+      <div className="flex h-[60vh] items-center justify-center">
+        <Loader2 className="w-10 h-10 text-primary animate-spin" />
+      </div>
     );
-  };
-
-  const getProductName = (productId: number) => {
-    return PRODUCTS.find(p => p.id === productId)?.name || 'Unknown Product';
-  };
-
-  const statusConfig = {
-    'Pending': 'bg-yellow-500/20 text-yellow-500',
-    'Confirmed': 'bg-blue-500/20 text-blue-500',
-    'Paid': 'bg-green-500/20 text-green-500',
-    'Shipped': 'bg-purple-500/20 text-purple-500',
-  };
+  }
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-4xl font-bold mb-2">Pre-Orders</h1>
-        <p className="text-muted-foreground">Track and manage customer pre-orders</p>
+    <div className="space-y-8 animate-fade-in-up">
+      <div className="flex justify-between items-end">
+        <div>
+          <h1 className="text-4xl font-bold font-serif mb-2">Pre-Orders & Orders Log</h1>
+          <p className="text-muted-foreground">Monitor and fulfill customer transaction logs</p>
+        </div>
+        <button
+          onClick={fetchOrders}
+          className="p-2.5 border border-border bg-secondary/30 rounded-xl hover:border-primary hover:text-primary transition cursor-pointer"
+        >
+          <RefreshCw className="w-4 h-4" />
+        </button>
       </div>
 
-      {/* Stats */}
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-xl px-5 py-4">
+          {error}
+        </div>
+      )}
+
+      {/* Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-secondary border border-border rounded-lg p-6">
-          <p className="text-sm text-muted-foreground mb-2">Total Pre-Orders</p>
-          <p className="text-3xl font-bold text-primary">{preOrders.length}</p>
+        <div className="bg-secondary/40 border border-border/80 rounded-2xl p-6 shadow-lg">
+          <p className="text-xs text-muted-foreground font-bold uppercase tracking-wider mb-2">Total Logged Orders</p>
+          <p className="text-3xl font-bold text-primary font-serif">{orders.length}</p>
         </div>
-        <div className="bg-secondary border border-border rounded-lg p-6">
-          <p className="text-sm text-muted-foreground mb-2">Pending</p>
-          <p className="text-3xl font-bold text-yellow-500">
-            {preOrders.filter(p => p.status === 'Pending').length}
+        <div className="bg-secondary/40 border border-border/80 rounded-2xl p-6 shadow-lg">
+          <p className="text-xs text-muted-foreground font-bold uppercase tracking-wider mb-2">Pending Invoices</p>
+          <p className="text-3xl font-bold text-yellow-500 font-serif">
+            {orders.filter(o => o.order_status.toLowerCase() === 'pending').length}
           </p>
         </div>
-        <div className="bg-secondary border border-border rounded-lg p-6">
-          <p className="text-sm text-muted-foreground mb-2">Confirmed</p>
-          <p className="text-3xl font-bold text-blue-500">
-            {preOrders.filter(p => p.status === 'Confirmed').length}
+        <div className="bg-secondary/40 border border-border/80 rounded-2xl p-6 shadow-lg">
+          <p className="text-xs text-muted-foreground font-bold uppercase tracking-wider mb-2">Paid / Confirmed</p>
+          <p className="text-3xl font-bold text-green-500 font-serif">
+            {orders.filter(o => o.order_status.toLowerCase() === 'paid').length}
           </p>
         </div>
-        <div className="bg-secondary border border-border rounded-lg p-6">
-          <p className="text-sm text-muted-foreground mb-2">Shipped</p>
-          <p className="text-3xl font-bold text-purple-500">
-            {preOrders.filter(p => p.status === 'Shipped').length}
+        <div className="bg-secondary/40 border border-border/80 rounded-2xl p-6 shadow-lg">
+          <p className="text-xs text-muted-foreground font-bold uppercase tracking-wider mb-2">Shipped Logs</p>
+          <p className="text-3xl font-bold text-purple-500 font-serif">
+            {orders.filter(o => o.order_status.toLowerCase() === 'shipped').length}
           </p>
         </div>
       </div>
 
-      {/* Pre-Orders Table */}
-      <div className="bg-secondary border border-border rounded-lg overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-background border-b border-border">
-            <tr>
-              <th className="text-left py-4 px-6 font-semibold">Customer</th>
-              <th className="text-left py-4 px-6 font-semibold">Product</th>
-              <th className="text-left py-4 px-6 font-semibold">Qty</th>
-              <th className="text-left py-4 px-6 font-semibold">Total</th>
-              <th className="text-left py-4 px-6 font-semibold">Status</th>
-              <th className="text-left py-4 px-6 font-semibold">Date</th>
-              <th className="text-left py-4 px-6 font-semibold">Contact</th>
-              <th className="text-left py-4 px-6 font-semibold">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {preOrders.map((preOrder) => (
-              <tr key={preOrder.id} className="border-b border-border/50 hover:bg-background/50 transition">
-                <td className="py-4 px-6">{preOrder.customerName}</td>
-                <td className="py-4 px-6 text-sm">
-                  {getProductName(preOrder.productId)}
-                </td>
-                <td className="py-4 px-6">{preOrder.quantity}</td>
-                <td className="py-4 px-6 text-primary font-semibold">{preOrder.totalPrice}</td>
-                <td className="py-4 px-6">
-                  <select
-                    value={preOrder.status}
-                    onChange={(e) => handleStatusUpdate(preOrder.id, e.target.value as PreOrder['status'])}
-                    className={`px-3 py-1 rounded text-xs font-semibold bg-background border border-border focus:outline-none focus:border-primary cursor-pointer ${statusConfig[preOrder.status]}`}
-                  >
-                    <option value="Pending">Pending</option>
-                    <option value="Confirmed">Confirmed</option>
-                    <option value="Paid">Paid</option>
-                    <option value="Shipped">Shipped</option>
-                  </select>
-                </td>
-                <td className="py-4 px-6 text-xs text-muted-foreground">{preOrder.date}</td>
-                <td className="py-4 px-6">
-                  <a
-                    href={`https://wa.me/${preOrder.customerPhone.replace(/\D/g, '')}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary hover:underline text-sm"
-                  >
-                    WhatsApp
-                  </a>
-                </td>
-                <td className="py-4 px-6">
-                  <button className="px-3 py-1 bg-primary/20 text-primary rounded text-xs hover:bg-primary/30 transition">
-                    View
-                  </button>
-                </td>
+      {/* Orders Table */}
+      <div className="bg-secondary/40 border border-border/80 rounded-2xl overflow-hidden shadow-xl">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-background border-b border-border/60">
+              <tr>
+                <th className="text-left py-4 px-6 font-semibold text-muted-foreground">Customer</th>
+                <th className="text-left py-4 px-6 font-semibold text-muted-foreground">Order Code</th>
+                <th className="text-left py-4 px-6 font-semibold text-muted-foreground">Models Ordered</th>
+                <th className="text-left py-4 px-6 font-semibold text-muted-foreground">Total Price</th>
+                <th className="text-left py-4 px-6 font-semibold text-muted-foreground">Fulfillment Status</th>
+                <th className="text-left py-4 px-6 font-semibold text-muted-foreground">Date</th>
+                <th className="text-left py-4 px-6 font-semibold text-muted-foreground">Direct Line</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {orders.map((order) => (
+                <tr key={order.id} className="border-b border-border/40 hover:bg-background/25 transition duration-300">
+                  <td className="py-4 px-6">
+                    <p className="font-semibold text-foreground">{order.customer_name}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{order.customer_email}</p>
+                  </td>
+                  <td className="py-4 px-6 font-mono font-semibold text-foreground">{order.order_code}</td>
+                  <td className="py-4 px-6 text-foreground max-w-xs truncate">
+                    {order.order_items ? order.order_items.map((i) => `${i.title} (${i.qty}x)`).join(", ") : '-'}
+                  </td>
+                  <td className="py-4 px-6 text-primary font-bold font-serif">{formatPrice(order.total)}</td>
+                  <td className="py-4 px-6">
+                    <select
+                      value={order.order_status}
+                      onChange={(e) => handleStatusUpdate(order.id, e.target.value)}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold bg-background border border-border focus:outline-none focus:border-primary cursor-pointer uppercase ${getStatusColor(order.order_status)}`}
+                    >
+                      <option value="pending">Pending</option>
+                      <option value="paid">Paid</option>
+                      <option value="processing">Processing</option>
+                      <option value="shipped">Shipped</option>
+                      <option value="done">Done</option>
+                      <option value="cancelled">Cancelled</option>
+                    </select>
+                  </td>
+                  <td className="py-4 px-6 text-xs text-muted-foreground">{formatDate(order.ordered_at)}</td>
+                  <td className="py-4 px-6">
+                    {order.customer_phone ? (
+                      <a
+                        href={`https://wa.me/${order.customer_phone.replace(/\D/g, '')}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 bg-green-500/10 border border-green-500/20 text-green-500 hover:bg-green-500 hover:text-background px-3 py-1.5 rounded-full text-xs font-bold transition duration-300"
+                      >
+                        <Smartphone className="w-3.5 h-3.5" /> WA Link
+                      </a>
+                    ) : (
+                      <span className="text-muted-foreground text-xs italic">No Phone</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {orders.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="py-12 text-center text-muted-foreground italic">No pre-order records available.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
 }
-
-import { useState } from 'react';
